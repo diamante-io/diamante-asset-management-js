@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wallet Connect</title>
+    <script src="https://cdn.jsdelivr.net/npm/diamnet-sdk/dist/diamnet-sdk.min.js"></script>
+</head>
+<body>
+    <h1>NFT MINT</h1>
+    <button id="connectWalletButton">Connect Wallet</button>
+    <div id="notification" style="display:none;"></div>
+    <div id="error" style="display:none;"></div>
+    <div id="connectedWallet" style="display:none;">
+        <p>Public Key: <span id="publicKey"></span></p>
+    </div>
+
+    <div id="uploadForm" style="display:none;">
+        <h2>Mint Your NFT</h2>
+        <input type="file" id="imageUpload" accept="image/*">
+        <input type="text" id="assetName" placeholder="Asset Name">
+        <button id="submitButton">Submit</button>
+    </div>
+
+    <div id="result" style="display:none;"></div>
+
+    <script>
+        const server = new DiamSdk.Aurora.Server("https://diamtestnet.diamcircle.io/");
+        const NETWORK_PASSPHRASE = "Diamante Testnet 2024";
+
+        async function connectWallet() {
+            if (window.diam) {
+                try {
+                    const result = await window.diam.connect();
+                    const diamPublicKey = result.message[0].diamPublicKey;
+                    console.log(`User active public key is: ${diamPublicKey}`);
+
+                    if (!diamPublicKey) {
+                        throw new Error('Failed to connect wallet');
+                    }
+
+                    localStorage.setItem('publicKey', diamPublicKey);
+
+                    document.getElementById('notification').innerText = 'Wallet is connected';
+                    document.getElementById('notification').style.display = 'block';
+                    document.getElementById('error').style.display = 'none';
+
+                    document.getElementById('publicKey').innerText = diamPublicKey;
+                    document.getElementById('connectedWallet').style.display = 'block';
+
+                    document.getElementById('connectWalletButton').disabled = true;
+
+                    document.getElementById('uploadForm').style.display = 'block';
+
+                    return diamPublicKey;
+                } catch (error) {
+                    console.error(`Error: ${error}`);
+                    document.getElementById('error').innerText = 'Failed to connect wallet. Please try again.';
+                    document.getElementById('error').style.display = 'block';
+                    document.getElementById('notification').style.display = 'none';
+                    document.getElementById('connectedWallet').style.display = 'none';
+                    throw error;
+                }
+            } else {
+                document.getElementById('error').innerText = 'Wallet extension not found';
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('notification').style.display = 'none';
+                setTimeout(() => {
+                    window.location.href = 'https://chromewebstore.google.com/detail/diam-wallet/oakkognifoojdbfjaccegangippipdmn?hl=en';
+                }, 1000);
+                throw new Error('Wallet extension not found');
+            }
+        }
+
+        async function uploadImage() {
+            const fileInput = document.getElementById('imageUpload');
+            const assetNameInput = document.getElementById('assetName');
+            const file = fileInput.files[0];
+            const assetName = assetNameInput.value;
+
+            if (!file || !assetName) {
+                alert('Please select an image and enter an asset name.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('userAddress', localStorage.getItem('publicKey'));
+            formData.append('assetName', assetName);
+
+            const response = await fetch('http://localhost:3000/CreateNft', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            const result = await response.json();
+            console.log('Response:', result);
+            document.getElementById('result').innerText = `CID: ${result.cid}`;
+            document.getElementById('result').style.display = 'block';
+
+            const transactionXDR = result.xdr;
+            console.log('Transaction XDR:', transactionXDR);
+
+            try {
+                const response2 = await window.diam.sign(transactionXDR, true, NETWORK_PASSPHRASE);
+                console.log('Signed response:', response2);
+                alert("Asset Minted..")
+            } catch (error) {
+                console.error('Error signing or submitting transaction:', error);
+                alert('Failed to mint asset. Please try again.');
+            }
+        }
+
+        document.getElementById('connectWalletButton').addEventListener('click', connectWallet);
+        document.getElementById('submitButton').addEventListener('click', uploadImage);
+    </script>
+</body>
+</html>
